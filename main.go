@@ -65,6 +65,7 @@ func notifyHandler(w http.ResponseWriter, r *http.Request) {
 		go func(s webpush.Subscription) {
 			defer wg.Done()
 			resp, err := webpush.SendNotification(payload, &s, &webpush.Options{
+				Subscriber:      "example@example.com",
 				VAPIDPublicKey:  vapidKeys.PublicKey,
 				VAPIDPrivateKey: vapidKeys.PrivateKey,
 				TTL:             30,
