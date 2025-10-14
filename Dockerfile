@@ -24,6 +24,10 @@ FROM scratch
 # Set the working directory
 WORKDIR /root/
 
+# Copy the CA certificates from the builder stage (alpine)
+# This is crucial for TLS verification in a scratch image
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+
 # Copy the compiled binary from the builder stage
 COPY --from=builder /micro-gopush .
 
