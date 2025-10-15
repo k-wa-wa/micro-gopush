@@ -6,7 +6,6 @@ import (
 	"log"
 	"net/http"
 	"sync"
-	"time"
 
 	webpush "github.com/SherClockHolmes/webpush-go"
 	"github.com/gorilla/mux"
@@ -15,6 +14,11 @@ import (
 type SubscriptionData struct {
 	Subscription webpush.Subscription `json:"subscription"`
 }
+
+type NotificationRequest struct {
+	Message string `json:"message"`
+}
+
 type VapidKeys struct {
 	PrivateKey string
 	PublicKey  string
@@ -53,11 +57,18 @@ func subscribeHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func notifyHandler(w http.ResponseWriter, r *http.Request) {
-	payload := []byte(fmt.Sprintf("Hello from the Go server! It's %s", time.Now().Format(time.RFC822)))
+	var req NotificationRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	payload := []byte(req.Message)
 
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	var successCount int
+	var failureCount int
 
 	subscriptions.Range(func(key, value interface{}) bool {
 		sub := value.(webpush.Subscription)
@@ -72,9 +83,20 @@ func notifyHandler(w http.ResponseWriter, r *http.Request) {
 			})
 			if err != nil {
 				log.Printf("Failed to send notification to endpoint %s: %s", s.Endpoint, err)
+				mu.Lock()
+				failureCount++
+				mu.Unlock()
 				return
 			}
 			defer resp.Body.Close()
+
+			if resp.StatusCode >= http.StatusBadRequest {
+				log.Printf("Failed to send notification to endpoint %s: received error status code %d", s.Endpoint, resp.StatusCode)
+				mu.Lock()
+				failureCount++
+				mu.Unlock()
+				return
+			}
 
 			mu.Lock()
 			successCount++
@@ -86,7 +108,7 @@ func notifyHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	go func() {
 		wg.Wait()
-		fmt.Printf("Notification sent successfully to %d subscriptions.\n", successCount)
+		fmt.Printf("Notification sent successfully to %d subscriptions, %d failures.\n", successCount, failureCount)
 	}()
 }
 
